@@ -2,7 +2,7 @@ import axios from "axios";
 import { auth } from "./firebase";
 
 const api = axios.create({
-  baseURL: "http://localhost:5000/api/v1",
+  baseURL: "https://tool-bp-api.onrender.com/api/v1",
 });
 
 api.interceptors.request.use(async (config) => {
