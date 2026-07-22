@@ -69,7 +69,7 @@ export default function ProductMasterPage() {
     try {
       if (editing.id === 0) {
         await api.post("/master/products/create", editing);
-
+        setOpen(false);
         await Swal.fire({
           icon: "success",
           title: "Thành công",
@@ -79,7 +79,7 @@ export default function ProductMasterPage() {
         });
       } else {
         await api.put(`/master/products/${editing.id}`, editing);
-
+        setOpen(false);
         await Swal.fire({
           icon: "success",
           title: "Thành công",
@@ -89,7 +89,6 @@ export default function ProductMasterPage() {
         });
       }
 
-      setOpen(false);
       await loadData();
     } catch (err) {
       if (axios.isAxiosError(err)) {
