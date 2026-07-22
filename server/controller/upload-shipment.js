@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import fsExtra from "fs-extra";
 
 import { readShipmentServices } from "../services/upload-shipment.js";
@@ -16,53 +17,65 @@ import { exportMissingCustomers } from "../services/export-missing-customer.serv
 
 export const uploadShipmentController = async (req, res, next) => {
   try {
-    // ==================================================
-    // Đọc file Shipment
-    // ==================================================
+    //==================================================
+    // Đọc Shipment
+    //==================================================
+
     const shipments = await readShipmentServices(req.file);
 
-    // Tổng hợp dữ liệu
     const summary = summarizeShipment(shipments);
 
-    // Xóa thư mục output cũ
-    await fsExtra.emptyDir("./output");
+    //==================================================
+    // Tạo thư mục riêng cho request
+    //==================================================
 
-    // ==================================================
-    // Sinh Word từng khách
-    // ==================================================
+    const requestId = Date.now() + "-" + crypto.randomUUID().substring(0, 8);
+
+    const outputDir = path.join("./output", requestId);
+
+    await fsExtra.ensureDir(outputDir);
+
+    //==================================================
+    // Sinh Word
+    //==================================================
+
     for (const customer of summary) {
       const buffer = await generateWord(customer);
 
-      const docxPath = path.join(
-        "./output",
-        `${customer.licensePlate}-${customer.shipToCode}.docx`,
+      fs.writeFileSync(
+        path.join(
+          outputDir,
+          `${customer.licensePlate}-${customer.shipToCode}.docx`,
+        ),
+        buffer,
       );
-
-      fs.writeFileSync(docxPath, buffer);
     }
 
-    // ==================================================
+    //==================================================
     // Sinh Excel tổng hợp
-    // ==================================================
+    //==================================================
+
     if (summary.length > 0) {
-      await generateExcel(summary);
+      await generateExcel(summary, outputDir);
     }
 
-    // ==================================================
-    // Danh sách khách chưa có Master
-    // ==================================================
+    //==================================================
+    // Khách chưa có Master
+    //==================================================
+
     const missingCustomers = summary.filter((x) => !x.found);
 
     if (missingCustomers.length > 0) {
       await exportMissingCustomers(
         missingCustomers,
-        path.join("./output", "KhachHangChuaCoMaster.xlsx"),
+        path.join(outputDir, "KhachHangChuaCoMaster.xlsx"),
       );
     }
 
-    // ==================================================
-    // Danh sách sản phẩm chưa có nhóm
-    // ==================================================
+    //==================================================
+    // Sản phẩm chưa có nhóm
+    //==================================================
+
     const noCategoryProducts = [];
     const productSet = new Set();
 
@@ -86,46 +99,60 @@ export const uploadShipmentController = async (req, res, next) => {
     if (noCategoryProducts.length > 0) {
       await exportMissingProducts(
         noCategoryProducts,
-        path.join("./output", "SanPhamChuaCoNhom.xlsx"),
+        path.join(outputDir, "SanPhamChuaCoNhom.xlsx"),
       );
     }
 
-    // ==================================================
-    // Convert Word -> PDF
-    // ==================================================
-    await convertFolderToPdf(path.resolve("./output"));
+    //==================================================
+    // Convert PDF
+    // Chỉ chạy trên Windows có Word
+    //==================================================
 
-    // ==================================================
-    // Xóa Word sau khi convert
-    // ==================================================
-    const files = fs.readdirSync("./output");
+    if (process.platform === "win32") {
+      await convertFolderToPdf(path.resolve(outputDir));
 
-    for (const file of files) {
-      if (file.endsWith(".docx")) {
-        fs.unlinkSync(path.join("./output", file));
+      const files = fs.readdirSync(outputDir);
+
+      for (const file of files) {
+        if (file.endsWith(".docx")) {
+          fs.unlinkSync(path.join(outputDir, file));
+        }
       }
     }
 
-    // ==================================================
-    // Tạo file ZIP
-    // ==================================================
-    const zipPath = path.join("./output", "KiemDich.zip");
+    //==================================================
+    // Tạo ZIP
+    //==================================================
 
-    if (fs.existsSync(zipPath)) {
-      fs.unlinkSync(zipPath);
-    }
+    const zipPath = path.join(outputDir, "KiemDich.zip");
 
-    await zipFolder("./output", zipPath);
+    await zipFolder(outputDir, zipPath);
 
-    // ==================================================
+    //==================================================
+    // Tự xóa sau 15 phút
+    //==================================================
+
+    setTimeout(
+      async () => {
+        try {
+          await fsExtra.remove(outputDir);
+        } catch (err) {
+          console.error(err);
+        }
+      },
+      15 * 60 * 1000,
+    );
+
+    //==================================================
     // Response
-    // ==================================================
+    //==================================================
+
     return res.json({
       success: true,
       summary,
       missingCustomers: missingCustomers.length,
       missingProducts: noCategoryProducts.length,
-      downloadUrl: "/output/KiemDich.zip",
+      downloadUrl: `/output/${requestId}/KiemDich.zip`,
     });
   } catch (err) {
     next(err);

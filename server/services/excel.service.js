@@ -1,13 +1,12 @@
 import ExcelJS from "exceljs";
 import path from "path";
-import fs from "fs";
 import { fileURLToPath } from "url";
 import { numberToVietnameseWords } from "../utils/fomatText.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export async function generateExcel(customers) {
+export async function generateExcel(customers, outputDir) {
   const workbook = new ExcelJS.Workbook();
 
   await workbook.xlsx.readFile(path.join(__dirname, "../template/KD.xlsx"));
@@ -46,10 +45,12 @@ export async function generateExcel(customers) {
     const date = new Date(customer.deliveryDate);
 
     sheet.getCell(`Q${row}`).value =
-      `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+      `${String(date.getDate()).padStart(2, "0")}/${String(
+        date.getMonth() + 1,
+      ).padStart(2, "0")}/${date.getFullYear()}`;
 
     row++;
   }
 
-  await workbook.xlsx.writeFile("./output/KiemDichTongHop.xlsx");
+  await workbook.xlsx.writeFile(path.join(outputDir, "TongHop.xlsx"));
 }
